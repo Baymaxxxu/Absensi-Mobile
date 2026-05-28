@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import React, { useState } from "react";
 import {
@@ -13,7 +14,8 @@ import {
   View,
 } from "react-native";
 
-// GANTI IP ini dengan IP laptop kamu dari: ipconfig getifaddr en0
+// GANTI IP ini kalau IP laptop kamu berubah
+// Cek IP laptop: ipconfig getifaddr en0
 const API_URL = "http://172.20.10.4:8000/api";
 
 export default function HomeScreen() {
@@ -44,7 +46,6 @@ export default function HomeScreen() {
       await AsyncStorage.setItem("user", JSON.stringify(userData));
 
       setUser(userData);
-
       Alert.alert("Berhasil", "Login berhasil.");
     } catch (error: any) {
       console.log("LOGIN ERROR:", error.message);
@@ -108,6 +109,31 @@ export default function HomeScreen() {
     };
   };
 
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (status !== "granted") {
+      Alert.alert(
+        "Izin kamera ditolak",
+        "Aplikasi membutuhkan akses kamera untuk foto selfie absensi."
+      );
+      return null;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+    });
+
+    if (result.canceled) {
+      Alert.alert("Dibatalkan", "Foto absensi dibatalkan.");
+      return null;
+    }
+
+    return result.assets[0];
+  };
+
   const handleCheckIn = async () => {
     try {
       setLoading(true);
@@ -126,26 +152,40 @@ export default function HomeScreen() {
         return;
       }
 
-      const response = await axios.post(
-        `${API_URL}/check-in`,
-        {
-          check_in_latitude: location.latitude,
-          check_in_longitude: location.longitude,
+      const photo = await takePhoto();
+
+      if (!photo) {
+        return;
+      }
+
+      const formData = new FormData();
+
+      formData.append("check_in_latitude", String(location.latitude));
+      formData.append("check_in_longitude", String(location.longitude));
+
+      formData.append("check_in_photo", {
+        uri: photo.uri,
+        name: "check_in_photo.jpg",
+        type: "image/jpeg",
+      } as any);
+
+      const response = await axios.post(`${API_URL}/check-in`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "multipart/form-data",
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-        }
-      );
+      });
 
       const distance = response.data.distance_meter;
-      const status = response.data.check_in_status;
+      const locationStatus = response.data.check_in_status;
+      const photoUrl = response.data.check_in_photo_url;
 
       setLastAction(
-        `Check-in berhasil. Status lokasi: ${status}. Jarak: ${distance} meter.`
+        `Check-in berhasil. Status lokasi: ${locationStatus}. Jarak: ${distance} meter.`
       );
+
+      console.log("CHECK-IN PHOTO URL:", photoUrl);
 
       Alert.alert("Berhasil", response.data.message);
     } catch (error: any) {
@@ -181,26 +221,40 @@ export default function HomeScreen() {
         return;
       }
 
-      const response = await axios.post(
-        `${API_URL}/check-out`,
-        {
-          check_out_latitude: location.latitude,
-          check_out_longitude: location.longitude,
+      const photo = await takePhoto();
+
+      if (!photo) {
+        return;
+      }
+
+      const formData = new FormData();
+
+      formData.append("check_out_latitude", String(location.latitude));
+      formData.append("check_out_longitude", String(location.longitude));
+
+      formData.append("check_out_photo", {
+        uri: photo.uri,
+        name: "check_out_photo.jpg",
+        type: "image/jpeg",
+      } as any);
+
+      const response = await axios.post(`${API_URL}/check-out`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "multipart/form-data",
         },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-        }
-      );
+      });
 
       const distance = response.data.distance_meter;
-      const status = response.data.check_out_status;
+      const locationStatus = response.data.check_out_status;
+      const photoUrl = response.data.check_out_photo_url;
 
       setLastAction(
-        `Check-out berhasil. Status lokasi: ${status}. Jarak: ${distance} meter.`
+        `Check-out berhasil. Status lokasi: ${locationStatus}. Jarak: ${distance} meter.`
       );
+
+      console.log("CHECK-OUT PHOTO URL:", photoUrl);
 
       Alert.alert("Berhasil", response.data.message);
     } catch (error: any) {
@@ -248,7 +302,7 @@ export default function HomeScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Check-in</Text>
+              <Text style={styles.buttonText}>Check-in + Foto</Text>
             )}
           </TouchableOpacity>
 
@@ -260,7 +314,7 @@ export default function HomeScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Check-out</Text>
+              <Text style={styles.buttonText}>Check-out + Foto</Text>
             )}
           </TouchableOpacity>
 
