@@ -14,7 +14,7 @@ class AttendanceController extends Controller
         $request->validate([
             'check_in_latitude' => 'required|numeric',
             'check_in_longitude' => 'required|numeric',
-            'check_in_photo' => 'nullable|string',
+            'check_in_photo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         $user = $request->user();
@@ -70,13 +70,18 @@ class AttendanceController extends Controller
             $notes[] = 'Lokasi check-in berada di luar radius kerja.';
         }
 
+        $checkInPhotoPath = null;
+        if ($request->hasFile('check_in_photo')) {
+        $checkInPhotoPath = $request->file('check_in_photo')->store('attendance_photos/check_in', 'public');
+        }
+
         $attendance = Attendance::create([
             'employee_id' => $employee->id,
             'attendance_date' => $today,
             'check_in_time' => $now->format('H:i:s'),
             'check_in_latitude' => $request->check_in_latitude,
             'check_in_longitude' => $request->check_in_longitude,
-            'check_in_photo' => $request->check_in_photo,
+            'check_in_photo' => $checkInPhotoPath,
             'check_in_status' => $checkInStatus,
             'status' => $status,
             'notes' => count($notes) > 0 ? implode(' ', $notes) : null,
@@ -87,6 +92,9 @@ class AttendanceController extends Controller
             'distance_meter' => round($distance, 2),
             'allowed_radius_meter' => $workLocation->radius_meter,
             'check_in_status' => $checkInStatus,
+            'check_in_photo_url' => $attendance->check_in_photo
+                ? asset('storage/' . $attendance->check_in_photo)
+                : null,
             'attendance' => $attendance,
         ]);
     }
@@ -96,7 +104,7 @@ class AttendanceController extends Controller
         $request->validate([
             'check_out_latitude' => 'required|numeric',
             'check_out_longitude' => 'required|numeric',
-            'check_out_photo' => 'nullable|string',
+            'check_out_photo' => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
         $user = $request->user();
@@ -154,11 +162,16 @@ class AttendanceController extends Controller
             $notes[] = 'Lokasi check-out berada di luar radius kerja.';
         }
 
+        $checkOutPhotoPath = null;
+        if ($request->hasFile('check_out_photo')) {
+        $checkOutPhotoPath = $request->file('check_out_photo')->store('attendance_photos/check_out', 'public');
+        }
+
         $attendance->update([
             'check_out_time' => Carbon::now()->format('H:i:s'),
             'check_out_latitude' => $request->check_out_latitude,
             'check_out_longitude' => $request->check_out_longitude,
-            'check_out_photo' => $request->check_out_photo,
+            'check_out_photo' => $checkOutPhotoPath,
             'check_out_status' => $checkOutStatus,
             'notes' => count($notes) > 0 ? implode(' ', $notes) : null,
         ]);
@@ -168,6 +181,9 @@ class AttendanceController extends Controller
             'distance_meter' => round($distance, 2),
             'allowed_radius_meter' => $workLocation->radius_meter,
             'check_out_status' => $checkOutStatus,
+            'check_out_photo_url' => $attendance->check_out_photo
+                ? asset('storage/' . $attendance->check_out_photo)
+                : null,
             'attendance' => $attendance,
         ]);
     }
