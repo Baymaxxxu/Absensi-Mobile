@@ -39,9 +39,36 @@ class AttendanceController extends Controller
             ], 400);
         }
 
+        $workLocation = $employee->workLocation;
+
+        if (! $workLocation) {
+            return response()->json([
+                'message' => 'Lokasi kerja karyawan belum diatur.',
+            ], 400);
+        }
+
+        $distance = $this->calculateDistance(
+            $request->check_in_latitude,
+            $request->check_in_longitude,
+            $workLocation->latitude,
+            $workLocation->longitude
+        );
+
+        $checkInStatus = $distance <= $workLocation->radius_meter ? 'valid' : 'invalid';
+
         $now = Carbon::now();
 
         $status = $now->format('H:i:s') > '08:00:00' ? 'terlambat' : 'hadir';
+
+        $notes = [];
+
+        if ($status === 'terlambat') {
+            $notes[] = 'Karyawan terlambat check-in.';
+        }
+
+        if ($checkInStatus === 'invalid') {
+            $notes[] = 'Lokasi check-in berada di luar radius kerja.';
+        }
 
         $attendance = Attendance::create([
             'employee_id' => $employee->id,
@@ -50,13 +77,16 @@ class AttendanceController extends Controller
             'check_in_latitude' => $request->check_in_latitude,
             'check_in_longitude' => $request->check_in_longitude,
             'check_in_photo' => $request->check_in_photo,
-            'check_in_status' => 'valid',
+            'check_in_status' => $checkInStatus,
             'status' => $status,
-            'notes' => $status === 'terlambat' ? 'Karyawan terlambat check-in.' : null,
+            'notes' => count($notes) > 0 ? implode(' ', $notes) : null,
         ]);
 
         return response()->json([
             'message' => 'Check-in berhasil.',
+            'distance_meter' => round($distance, 2),
+            'allowed_radius_meter' => $workLocation->radius_meter,
+            'check_in_status' => $checkInStatus,
             'attendance' => $attendance,
         ]);
     }
@@ -97,16 +127,47 @@ class AttendanceController extends Controller
             ], 400);
         }
 
+        $workLocation = $employee->workLocation;
+
+        if (! $workLocation) {
+            return response()->json([
+                'message' => 'Lokasi kerja karyawan belum diatur.',
+            ], 400);
+        }
+
+        $distance = $this->calculateDistance(
+            $request->check_out_latitude,
+            $request->check_out_longitude,
+            $workLocation->latitude,
+            $workLocation->longitude
+        );
+
+        $checkOutStatus = $distance <= $workLocation->radius_meter ? 'valid' : 'invalid';
+
+        $notes = [];
+
+        if ($attendance->notes) {
+            $notes[] = $attendance->notes;
+        }
+
+        if ($checkOutStatus === 'invalid') {
+            $notes[] = 'Lokasi check-out berada di luar radius kerja.';
+        }
+
         $attendance->update([
             'check_out_time' => Carbon::now()->format('H:i:s'),
             'check_out_latitude' => $request->check_out_latitude,
             'check_out_longitude' => $request->check_out_longitude,
             'check_out_photo' => $request->check_out_photo,
-            'check_out_status' => 'valid',
+            'check_out_status' => $checkOutStatus,
+            'notes' => count($notes) > 0 ? implode(' ', $notes) : null,
         ]);
 
         return response()->json([
             'message' => 'Check-out berhasil.',
+            'distance_meter' => round($distance, 2),
+            'allowed_radius_meter' => $workLocation->radius_meter,
+            'check_out_status' => $checkOutStatus,
             'attendance' => $attendance,
         ]);
     }
@@ -130,5 +191,26 @@ class AttendanceController extends Controller
             'message' => 'Riwayat absensi berhasil diambil.',
             'attendances' => $attendances,
         ]);
+    }
+
+    private function calculateDistance($lat1, $lon1, $lat2, $lon2)
+    {
+        $earthRadius = 6371000;
+
+        $lat1 = deg2rad($lat1);
+        $lon1 = deg2rad($lon1);
+        $lat2 = deg2rad($lat2);
+        $lon2 = deg2rad($lon2);
+
+        $latDelta = $lat2 - $lat1;
+        $lonDelta = $lon2 - $lon1;
+
+        $a = sin($latDelta / 2) * sin($latDelta / 2) +
+            cos($lat1) * cos($lat2) *
+            sin($lonDelta / 2) * sin($lonDelta / 2);
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return $earthRadius * $c;
     }
 }
